@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Dark background */
+body {
+  margin: 0;
+  padding: 0;
+  background: #0f172a;
+  color: white;
+  font-family: Inter, sans-serif;
+}
+
+/* Remove Vite's width restriction */
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Glass effect */
+.glass {
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(15px);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+}
+
+/* Gradient button */
+.gradient {
+  background: linear-gradient(90deg,#7c3aed,#2563eb);
+  color: white;
+  transition: 0.3s;
+}
+
+.gradient:hover {
+  transform: scale(1.05);
+}
+
+/* Hero background */
+.hero-bg {
+  background:
+    radial-gradient(circle at top,#312e81,#0f172a 60%);
+}
