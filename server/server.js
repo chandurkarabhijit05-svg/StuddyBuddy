@@ -104,7 +104,14 @@ app.post("/api/summary", upload.single("pdf"), async (req, res) => {
 
     const completion = await groq.chat.completions.create({
       messages: [
-        { role: "user", content: `Summarize this PDF:\n\n${text}` },
+        {
+          role: "system",
+          content: "You are an expert study assistant. Create clear, concise, well-structured summaries of academic content. Use bullet points and headers where appropriate."
+        },
+        {
+          role: "user",
+          content: `Summarize the following PDF content in a clear and structured way. Include key points, main ideas, and important details:\n\n${text}`
+        },
       ],
       model: "llama-3.3-70b-versatile",
     });
@@ -127,7 +134,14 @@ app.post("/api/flashcards", upload.single("pdf"), async (req, res) => {
 
     const completion = await groq.chat.completions.create({
       messages: [
-        { role: "user", content: `Create flashcards from this PDF:\n\n${text}` },
+        {
+          role: "system",
+          content: "You are an expert study assistant. Create flashcards in a strict format. Each flashcard must follow this exact pattern:\n\nCard N:\nFront: [question or concept]\nBack: [answer or explanation]\n\nUse this exact format for every card. Number cards sequentially."
+        },
+        {
+          role: "user",
+          content: `Create flashcards from the following PDF content. Cover all key concepts, definitions, and important details. Use the exact format specified:\n\n${text}`
+        },
       ],
       model: "llama-3.3-70b-versatile",
     });
@@ -150,7 +164,31 @@ app.post("/api/quiz", upload.single("pdf"), async (req, res) => {
 
     const completion = await groq.chat.completions.create({
       messages: [
-        { role: "user", content: `Generate MCQ quiz from this PDF:\n\n${text}` },
+        {
+          role: "system",
+          content: `You are an expert quiz generator. Create multiple choice quizzes with exactly 4 options (A, B, C, D) per question. 
+
+STRICT FORMAT - Follow this exact pattern for every question:
+
+Question N: [Question text]
+
+A. [Option A]
+B. [Option B]
+C. [Option C]
+D. [Option D]
+
+Correct Answer: [A/B/C/D]
+
+Explanation: [Brief explanation of why this is correct]
+
+---
+
+Repeat this format for each question. Always include the correct answer and explanation.`
+        },
+        {
+          role: "user",
+          content: `Generate a quiz from the following PDF content. Create questions that test understanding of key concepts. Use the exact format specified above:\n\n${text}`
+        },
       ],
       model: "llama-3.3-70b-versatile",
     });
@@ -189,7 +227,6 @@ app.get("/api/dashboard/:userId", async (req, res) => {
 });
 
 // ========== CHAT ==========
-// FIXED: Removed upload.single("pdf") - chat should use JSON body, not file upload
 app.post("/api/chat", upload.single("pdf"), async (req, res) => {
   try {
     const text = await extractPDFText(req.file.buffer);
@@ -272,6 +309,7 @@ app.delete("/api/pdf/:id", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.post("/api/send-email", async (req, res) => {
   try {
     const {
@@ -297,9 +335,9 @@ app.post("/api/send-email", async (req, res) => {
     });
 
     if (error) {
-  console.log("Resend Error:", error);
-  return res.status(400).json({ error });
-}
+      console.log("Resend Error:", error);
+      return res.status(400).json({ error });
+    }
 
     res.json({
       success: true,
