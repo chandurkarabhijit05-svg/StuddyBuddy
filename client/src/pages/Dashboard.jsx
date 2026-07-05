@@ -46,24 +46,35 @@ import QuickActions from "../components/QuickActions";
 import StudyStreak from "../components/StudyStreak";
 
 // ─── Sidebar Item Component ──────────────────────────────
-function SidebarItem({ icon: Icon, label, active, onClick, badge }) {
+function SidebarItem({ icon: Icon, label, active, onClick, badge, collapsed }) {
   return (
     <motion.button
-      whileHover={{ x: 4 }}
+      whileHover={{ x: collapsed ? 0 : 4 }}
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+      className={`relative w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
         active
           ? "bg-gradient-to-r from-violet-500/20 to-purple-500/10 text-violet-300 border border-violet-500/20"
           : "text-slate-400 hover:text-white hover:bg-white/5"
-      }`}
+      } ${collapsed ? "justify-center px-2" : ""}`}
     >
-      <Icon className={`w-5 h-5 ${active ? "text-violet-400" : "text-slate-500"}`} />
-      <span className="flex-1 text-left">{label}</span>
-      {badge > 0 && (
-        <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 text-xs font-bold rounded-full">
-          {badge}
-        </span>
+      <div className="relative flex-shrink-0">
+        <Icon className={`w-5 h-5 ${active ? "text-violet-400" : "text-slate-500"}`} />
+        {/* Badge as a small dot when collapsed */}
+        {collapsed && badge > 0 && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-slate-900" />
+        )}
+      </div>
+      
+      {!collapsed && (
+        <>
+          <span className="flex-1 text-left">{label}</span>
+          {badge > 0 && (
+            <span className="px-2 py-0.5 bg-rose-500/20 text-rose-400 text-xs font-bold rounded-full">
+              {badge}
+            </span>
+          )}
+        </>
       )}
     </motion.button>
   );
@@ -573,12 +584,12 @@ export default function Dashboard() {
         </button>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-          <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} />
-          <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} />
-          <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} />
-          <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} />
-          <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} />
-          <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} />
+              <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
+              <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
+              <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
+              <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
+               <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
+               <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
         </nav>
 
         <div className="p-4 border-t border-slate-800/50">

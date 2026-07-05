@@ -16,6 +16,7 @@ import {
   BookOpen,
   MessageSquare,
   ChevronDown,
+  Upload
 } from "lucide-react";
 
 // ─── Stats Bar ───────────────────────────────────────────

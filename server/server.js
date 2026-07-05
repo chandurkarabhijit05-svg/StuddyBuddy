@@ -310,16 +310,12 @@ app.delete("/api/pdf/:id", async (req, res) => {
   }
 });
 
+// ========== EMAIL REPORT (ATTRACTIVE HTML) ==========
 app.post("/api/send-email", async (req, res) => {
   try {
-    const {
-      email,
-      summary,
-      flashcards,
-      quiz,
-      chatHistory,
-    } = req.body;
+    const { email, summary, flashcards, quiz, chatHistory } = req.body;
 
+    // Generate the beautiful HTML email
     const html = generateEmailTemplate({
       summary,
       flashcards,
@@ -345,7 +341,6 @@ app.post("/api/send-email", async (req, res) => {
     });
   } catch (err) {
     console.error(err);
-
     res.status(500).json({
       error: err.message,
     });
