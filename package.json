@@ -1,8 +1,34 @@
 {
-  "name": "study-buddy-ai",
+  "name": "studybuddy",
   "private": true,
+  "version": "0.0.0",
+  "type": "module",
   "scripts": {
-    "client": "npm --prefix client run dev",
-    "server": "npm --prefix server run dev"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "oxlint . || eslint ."
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.x",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^0.x",
+    "pdfjs-dist": "^6.1.200",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-pdf": "^10.4.1",
+    "react-router-dom": "^6.x",
+    "react-toastify": "^11.1.0",
+    "recharts": "^3.9.2"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.5.2",
+    "oxlint": "^0.x",
+    "postcss": "^8.5.16",
+    "tailwindcss": "^3.4.19",
+    "vite": "^5.3.1"
   }
 }

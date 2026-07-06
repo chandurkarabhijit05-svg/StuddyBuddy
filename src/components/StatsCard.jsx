@@ -7,7 +7,6 @@ import {
   ArrowDownRight,
 } from "lucide-react";
 
-// ─── Trend Indicator ─────────────────────────────────────
 function TrendIndicator({ trend, value }) {
   const config = {
     up: { icon: ArrowUpRight, color: "text-emerald-400", bg: "bg-emerald-500/15" },
@@ -28,7 +27,6 @@ function TrendIndicator({ trend, value }) {
   );
 }
 
-// ─── Main StatsCard Component ────────────────────────────
 export default function StatsCard({
   title,
   value,
@@ -106,21 +104,17 @@ export default function StatsCard({
       whileHover={{ y: -6, scale: 1.02 }}
       className={`relative group overflow-hidden rounded-3xl bg-gradient-to-br ${c.bg} border ${c.border} ${c.hoverBorder} backdrop-blur-sm p-6 transition-all duration-300 hover:shadow-xl ${c.glow}`}
     >
-      {/* Background Glow */}
       <div
         className={`absolute -top-10 -right-10 w-32 h-32 bg-gradient-to-br ${c.bg} rounded-full blur-3xl opacity-0 group-hover:opacity-60 transition-opacity duration-700`}
       />
 
-      {/* Top Row */}
       <div className="relative flex items-start justify-between mb-4">
         <div className={`p-3 rounded-2xl ${c.iconBg} transition-transform group-hover:scale-110 duration-300`}>
           <Icon className={`w-6 h-6 ${c.iconColor}`} />
         </div>
-
         <TrendIndicator trend={trend} value={trendValue} />
       </div>
 
-      {/* Value */}
       <div className="relative">
         <motion.p
           initial={{ opacity: 0, scale: 0.5 }}
@@ -130,24 +124,15 @@ export default function StatsCard({
         >
           {value}
         </motion.p>
-
-        {/* Title */}
         <h3 className="text-sm font-medium text-slate-400 mt-2 group-hover:text-slate-300 transition-colors">
           {title}
         </h3>
-
-        {/* Subtitle */}
-        {subtitle && (
-          <p className="text-xs text-slate-600 mt-1">{subtitle}</p>
-        )}
+        {subtitle && <p className="text-xs text-slate-600 mt-1">{subtitle}</p>}
       </div>
 
-      {/* Bottom Accent Line */}
       <div
         className={`absolute bottom-0 left-6 right-6 h-0.5 bg-gradient-to-r ${c.bg.split(" ")[0]} opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-full`}
       />
-
-      {/* Corner Decoration */}
       <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-500">
         <TrendingUp className={`w-4 h-4 ${c.text} opacity-30`} />
       </div>

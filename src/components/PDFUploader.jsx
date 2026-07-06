@@ -12,7 +12,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  XCircle,          // Changed from X
+  XCircle,
   Zap,
   BookOpen,
   Layers,
@@ -26,8 +26,17 @@ import {
 } from "lucide-react";
 import { toast } from "react-toastify";
 import Quiz from "./Quiz";
-import Flashcards from "./Flashcards";   // ← ADD THIS IMPORT
-import supabase from "../services/supabase";
+import Flashcards from "./Flashcards";
+import supabase from "../services/supabase.js";
+import { uploadFile } from "../api/upload.js";
+import { askGroq, generateSummary, generateFlashcards, generateQuiz } from "../api/groq.js";
+import * as pdfjsLib from "pdfjs-dist";
+
+// Set PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 // ─── Upload Zone Component ─────────────────────────────────
 function UploadZone({ file, onFileSelect, onClear }) {
@@ -302,7 +311,8 @@ function ChatMessage({ chat, index }) {
 // ─── Main PDFUploader Component ──────────────────────────
 export default function PDFUploader() {
   const [file, setFile] = useState(null);
-  const [uploadedId, setUploadedId] = useState(null);
+  const [uploadedUrl, setUploadedUrl] = useState(null);
+  const [pdfText, setPdfText] = useState("");
   const [summary, setSummary] = useState("");
   const [flashcards, setFlashcards] = useState("");
   const [quiz, setQuiz] = useState("");
@@ -312,7 +322,33 @@ export default function PDFUploader() {
   const [chatHistory, setChatHistory] = useState([]);
   const [activeTab, setActiveTab] = useState("chat");
 
-  const isReady = !!uploadedId;
+  const isReady = !!uploadedUrl;
+
+  // ─── Extract REAL text from PDF using pdfjs-dist ─────
+  const extractPdfText = async (pdfFile) => {
+    try {
+      const arrayBuffer = await pdfFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      let fullText = "";
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item) => item.str).join(" ");
+        fullText += pageText + " ";
+      }
+      
+      if (!fullText.trim()) {
+        throw new Error("No text found in PDF");
+      }
+      
+      return fullText.trim().slice(0, 8000);
+    } catch (err) {
+      console.error("PDF parse error:", err);
+      toast.error("Could not read PDF text. Using filename as fallback.");
+      return `Document: ${pdfFile.name}. This is a PDF document uploaded for analysis.`;
+    }
+  };
 
   // ─── Upload ─────────────────────────────────────────────
   const handleUpload = async () => {
@@ -323,79 +359,86 @@ export default function PDFUploader() {
 
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user_id = session.user.id;
+      // Upload to Supabase Storage
+      const result = await uploadFile(file, "pdfs");
+      setUploadedUrl(result.url);
 
-      const formData = new FormData();
-      formData.append("pdf", file);
-      formData.append("user_id", user_id);
+      // Extract REAL text from PDF
+      const text = await extractPdfText(file);
+      setPdfText(text);
 
-      const res = await fetch("http://localhost:5000/api/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-
-      setUploadedId(data.id);
-      toast.success("PDF Uploaded Successfully!");
+      toast.success("PDF Uploaded & Parsed Successfully!");
     } catch (error) {
       console.error(error);
-      toast.error(error.message);
+      toast.error(error.message || "Upload failed");
     } finally {
       setLoading(false);
     }
   };
 
-  // ─── Generic AI Handler ─────────────────────────────────
-  const handleAIAction = async (endpoint, setter, errorMsg) => {
-    if (!file || !uploadedId) {
+  // ─── AI Summary ─────────────────────────────────────────
+  const handleSummary = async () => {
+    if (!pdfText) {
       toast.error("Upload PDF first");
       return;
     }
 
     setLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("pdf", file);
-      formData.append("id", uploadedId);
-
-      const res = await fetch(`http://localhost:5000/api/${endpoint}`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      setter(data[endpoint] || data.summary || data.flashcards || data.quiz);
+      const response = await generateSummary(pdfText);
+      setSummary(response.choices[0].message.content);
+      toast.success("Summary generated!");
     } catch (error) {
       console.error(error);
-      toast.error(errorMsg);
+      toast.error("Summary generation failed: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleSummary = () => handleAIAction("summary", setSummary, "Summary generation failed");
-  const handleFlashcards = () => handleAIAction("flashcards", setFlashcards, "Failed to generate flashcards");
-  const handleQuiz = () => handleAIAction("quiz", setQuiz, "Failed to generate quiz");
+  // ─── AI Flashcards ──────────────────────────────────────
+  const handleFlashcards = async () => {
+    if (!pdfText) {
+      toast.error("Upload PDF first");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await generateFlashcards(pdfText);
+      setFlashcards(response.choices[0].message.content);
+      toast.success("Flashcards generated!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Flashcards generation failed: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ─── AI Quiz ────────────────────────────────────────────
+  const handleQuiz = async () => {
+    if (!pdfText) {
+      toast.error("Upload PDF first");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await generateQuiz(pdfText);
+      setQuiz(response.choices[0].message.content);
+      toast.success("Quiz generated!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Quiz generation failed: " + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // ─── Chat ───────────────────────────────────────────────
-  const loadChatHistory = useCallback(async () => {
-    if (!uploadedId) return;
-    try {
-      const res = await fetch(`http://localhost:5000/api/chat/${uploadedId}`);
-      const data = await res.json();
-      setChatHistory(data);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [uploadedId]);
-
-  useEffect(() => { loadChatHistory(); }, [uploadedId, loadChatHistory]);
-
   const handleChat = async () => {
-    if (!file || !uploadedId) {
+    if (!pdfText) {
       toast.error("Upload PDF first");
       return;
     }
@@ -406,28 +449,18 @@ export default function PDFUploader() {
 
     setLoading(true);
     try {
-      const formData = new Data();
-      formData.append("pdf", file);
-      formData.append("id", uploadedId);
-      formData.append("question", question);
+      const response = await askGroq([
+        { role: "system", content: `You are analyzing this document: "${pdfText.slice(0, 3000)}..."` },
+        { role: "user", content: question }
+      ]);
 
-      const res = await fetch("http://localhost:5000/api/chat", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || "Chat request failed");
-      }
-
-      const data = await res.json();
-      setAnswer(data.answer);
-      await loadChatHistory();
+      const aiAnswer = response.choices[0].message.content;
+      setAnswer(aiAnswer);
+      setChatHistory((prev) => [...prev, { question, answer: aiAnswer }]);
       setQuestion("");
     } catch (error) {
       console.error(error);
-      toast.error(error.message || "Failed to get answer");
+      toast.error("Chat failed: " + error.message);
     } finally {
       setLoading(false);
     }
@@ -455,40 +488,16 @@ export default function PDFUploader() {
   const downloadFlashcards = () => downloadContent(flashcards, "AI-Flashcards.txt");
   const downloadQuiz = () => downloadContent(quiz, "AI-Quiz.txt");
 
-  // ─── Email ──────────────────────────────────────────────
-  const sendEmail = async () => {
-    try {
-      const email = prompt("Enter your email:");
-      if (!email) return;
-
-      const res = await fetch("http://localhost:5000/api/send-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email,
-          summary,
-          flashcards,
-          quiz,
-          chatHistory: chatHistory.map((chat) => `Q: ${chat.question}\nA: ${chat.answer}`).join("\n\n"),
-        }),
-      });
-
-      const data = await res.json();
-      if (data.success) {
-        toast.success("Email sent successfully!");
-      } else {
-        toast.error(data.error?.message || "Failed to send email");
-      }
-    } catch (err) {
-      console.error(err);
-      toast.error("Something went wrong");
-    }
+  // ─── Email (Disabled - requires backend) ─────────────────
+  const handleSendEmail = async () => {
+    toast.info("Email feature requires backend server. Please use Download instead!");
   };
 
   // ─── Clear File ─────────────────────────────────────────
   const handleClearFile = () => {
     setFile(null);
-    setUploadedId(null);
+    setUploadedUrl(null);
+    setPdfText("");
     setSummary("");
     setFlashcards("");
     setQuiz("");
@@ -525,7 +534,7 @@ export default function PDFUploader() {
       />
 
       {/* Upload Button */}
-      {file && !uploadedId && (
+      {file && !uploadedUrl && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -549,7 +558,7 @@ export default function PDFUploader() {
       )}
 
       {/* Success State */}
-      {uploadedId && (
+      {uploadedUrl && (
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -602,7 +611,7 @@ export default function PDFUploader() {
           title="Email Report"
           description="Send all generated content to your email"
           color="rose"
-          onClick={sendEmail}
+          onClick={handleSendEmail}
           disabled={!isReady || loading || (!summary && !flashcards && !quiz)}
           loading={loading}
           isGenerated={false}
@@ -677,27 +686,36 @@ export default function PDFUploader() {
         </motion.div>
       )}
 
-      {/* Outputs */}
+      {/* Outputs - Fixed AnimatePresence */}
       <div className="space-y-6">
+        {/* Summary */}
         <AnimatePresence>
-          {/* Summary - stays as OutputCard */}
           {summary && (
-            <OutputCard
-              title="AI Summary"
-              icon={BookOpen}
-              color="blue"
-              onDownload={downloadSummary}
-              onCopy
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
             >
-              {summary}
-            </OutputCard>
+              <OutputCard
+                title="AI Summary"
+                icon={BookOpen}
+                color="blue"
+                onDownload={downloadSummary}
+                onCopy
+              >
+                {summary}
+              </OutputCard>
+            </motion.div>
           )}
+        </AnimatePresence>
 
-          {/* Flashcards - NOW USES THE FLASHCARDS COMPONENT */}
+        {/* Flashcards */}
+        <AnimatePresence>
           {flashcards && (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
               className="relative bg-gradient-to-br from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-3xl backdrop-blur-xl overflow-hidden"
             >
               {/* Header */}
@@ -726,17 +744,25 @@ export default function PDFUploader() {
               </div>
             </motion.div>
           )}
+        </AnimatePresence>
 
-          {/* Quiz - stays as OutputCard */}
+        {/* Quiz */}
+        <AnimatePresence>
           {quiz && (
-            <OutputCard
-              title="Quiz"
-              icon={HelpCircle}
-              color="amber"
-              onDownload={downloadQuiz}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
             >
-              <Quiz quiz={quiz} />
-            </OutputCard>
+              <OutputCard
+                title="Quiz"
+                icon={HelpCircle}
+                color="amber"
+                onDownload={downloadQuiz}
+              >
+                <Quiz quiz={quiz} />
+              </OutputCard>
+            </motion.div>
           )}
         </AnimatePresence>
       </div>

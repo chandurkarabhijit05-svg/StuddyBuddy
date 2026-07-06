@@ -14,29 +14,36 @@ import {
 
 // ─── Floating Particle Background ──────────────────────────
 function FloatingParticles() {
+  const [particles, setParticles] = useState([]);
+
+  useEffect(() => {
+    const newParticles = Array.from({ length: 20 }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100,
+      delay: Math.random() * 5,
+      duration: Math.random() * 10 + 10,
+    }));
+    setParticles(newParticles);
+  }, []);
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {[...Array(20)].map((_, i) => (
+      {particles.map((p) => (
         <motion.div
-          key={i}
+          key={p.id}
           className="absolute w-1 h-1 bg-violet-400/30 rounded-full"
-          initial={{
-            x: Math.random() * (typeof window !== "undefined" ? window.innerWidth : 1000),
-            y: Math.random() * 800,
-          }}
+          initial={{ y: 800, opacity: 0 }}
           animate={{
-            y: [null, -100],
+            y: -100,
             opacity: [0, 1, 0],
           }}
           transition={{
-            duration: Math.random() * 10 + 10,
+            duration: p.duration,
             repeat: Infinity,
-            delay: Math.random() * 5,
+            delay: p.delay,
             ease: "linear",
           }}
-          style={{
-            left: `${Math.random() * 100}%`,
-          }}
+          style={{ left: `${p.left}%` }}
         />
       ))}
     </div>
@@ -122,8 +129,6 @@ function ScrollIndicator() {
 // ─── Main Hero Component ───────────────────────────────────
 export default function Hero() {
   const { scrollY } = useScroll();
-  const y1 = useTransform(scrollY, [0, 500], [0, 150]);
-  const y2 = useTransform(scrollY, [0, 500], [0, -100]);
   const opacity = useTransform(scrollY, [0, 400], [1, 0]);
 
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -141,10 +146,8 @@ export default function Hero() {
 
   return (
     <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-      {/* Background Effects */}
       <FloatingParticles />
 
-      {/* Gradient Orbs */}
       <GradientOrb
         className="w-[600px] h-[600px] bg-violet-600/20 -top-40 -left-40"
         delay={0}
@@ -158,7 +161,6 @@ export default function Hero() {
         delay={4}
       />
 
-      {/* Grid Pattern Overlay */}
       <div
         className="absolute inset-0 opacity-[0.03]"
         style={{
@@ -168,12 +170,10 @@ export default function Hero() {
         }}
       />
 
-      {/* Main Content */}
       <motion.div
         style={{ opacity }}
         className="relative z-10 text-center px-4 sm:px-6 max-w-5xl mx-auto"
       >
-        {/* Floating Feature Badges */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -185,7 +185,6 @@ export default function Hero() {
           <FeatureBadge icon={Zap} text="Flashcards & Quizzes" delay={0.5} />
         </motion.div>
 
-        {/* Main Headline */}
         <div className="relative">
           <motion.h1
             initial={{ opacity: 0, y: 50 }}
@@ -219,7 +218,6 @@ export default function Hero() {
           </motion.h2>
         </div>
 
-        {/* Animated Underline */}
         <motion.div
           initial={{ scaleX: 0 }}
           animate={{ scaleX: 1 }}
@@ -227,7 +225,6 @@ export default function Hero() {
           className="w-32 h-1 bg-gradient-to-r from-violet-500 to-blue-500 mx-auto mt-8 rounded-full"
         />
 
-        {/* Description */}
         <motion.p
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -241,30 +238,27 @@ export default function Hero() {
           beautiful platform.
         </motion.p>
 
-        {/* CTA Buttons */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.7, duration: 0.8 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-12"
         >
-          <motion.button
+          <motion.a
+            href="/dashboard"
             whileHover={{ scale: 1.05, boxShadow: "0 20px 40px rgba(139, 92, 246, 0.3)" }}
             whileTap={{ scale: 0.95 }}
-            className="group relative px-8 py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-blue-600 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25 overflow-hidden"
+            className="group relative px-8 py-4 bg-gradient-to-r from-violet-600 via-purple-600 to-blue-600 text-white font-semibold rounded-2xl shadow-lg shadow-violet-500/25 overflow-hidden inline-flex items-center gap-2"
           >
-            <span className="relative z-10 flex items-center gap-2">
-              <Sparkles className="w-5 h-5" />
-              Get Started Free
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </span>
-            {/* Shine Effect */}
+            <Sparkles className="w-5 h-5" />
+            Get Started Free
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
             <motion.div
               className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -skew-x-12"
               animate={{ x: ["-200%", "200%"] }}
               transition={{ duration: 3, repeat: Infinity, repeatDelay: 2 }}
             />
-          </motion.button>
+          </motion.a>
 
           <motion.button
             whileHover={{ scale: 1.05 }}
@@ -276,7 +270,6 @@ export default function Hero() {
           </motion.button>
         </motion.div>
 
-        {/* Stats Row */}
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
@@ -289,7 +282,6 @@ export default function Hero() {
         </motion.div>
       </motion.div>
 
-      {/* Scroll Indicator */}
       <ScrollIndicator />
     </section>
   );

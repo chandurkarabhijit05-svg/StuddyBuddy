@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutDashboard,
@@ -36,14 +36,13 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import PDFUploader from "../components/PDFUploader";
-import { getDashboard, deletePDF } from "../services/api";
-import supabase from "../services/supabase";
 import Analytics from "../components/Analytics";
 import PDFPreview from "../components/PDFPreview";
 import StatsCard from "../components/StatsCard";
 import Notifications from "../components/Notifications";
 import QuickActions from "../components/QuickActions";
 import StudyStreak from "../components/StudyStreak";
+import supabase from "../services/supabase.js";
 
 // ─── Sidebar Item Component ──────────────────────────────
 function SidebarItem({ icon: Icon, label, active, onClick, badge, collapsed }) {
@@ -60,7 +59,6 @@ function SidebarItem({ icon: Icon, label, active, onClick, badge, collapsed }) {
     >
       <div className="relative flex-shrink-0">
         <Icon className={`w-5 h-5 ${active ? "text-violet-400" : "text-slate-500"}`} />
-        {/* Badge as a small dot when collapsed */}
         {collapsed && badge > 0 && (
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-slate-900" />
         )}
@@ -191,12 +189,12 @@ function EmptyState({ icon: Icon, title, description, action }) {
 export default function Dashboard() {
   const [pdfs, setPdfs] = useState([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true); // Start true for initial load
+  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light");
   const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, false = not auth, true = auth
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
   const [error, setError] = useState(null);
@@ -206,8 +204,8 @@ export default function Dashboard() {
   // Stats
   const totalPDFs = pdfs.length;
   const totalSummaries = useMemo(() => pdfs.filter((p) => p.summary?.trim()).length, [pdfs]);
-  const totalFlashcards = useMemo(() => pdfs.filter((p) => String(p.flashcards).trim()).length, [pdfs]);
-  const totalQuizzes = useMemo(() => pdfs.filter((p) => String(p.quiz).trim()).length, [pdfs]);
+  const totalFlashcards = useMemo(() => pdfs.filter((p) => p.flashcards && String(p.flashcards).trim()).length, [pdfs]);
+  const totalQuizzes = useMemo(() => pdfs.filter((p) => p.quiz && String(p.quiz).trim()).length, [pdfs]);
 
   const streak = useMemo(() => {
     if (!pdfs.length) return 0;
@@ -234,14 +232,13 @@ export default function Dashboard() {
 
     const init = async () => {
       try {
-        // First check session
+        // Check session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError || !session?.user) {
           if (mounted) {
             setIsAuthenticated(false);
             setLoading(false);
-            // Redirect to login after a brief delay
             setTimeout(() => navigate("/login"), 100);
           }
           return;
@@ -252,16 +249,22 @@ export default function Dashboard() {
           setIsAuthenticated(true);
         }
 
-        // Then load dashboard data
-        const data = await getDashboard(session.user.id);
+        // ✅ Fetch PDFs directly from Supabase (NO backend server)
+        const { data, error: pdfError } = await supabase
+          .from('pdfs')
+          .select('*')
+          .eq('user_id', session.user.id)
+          .order('created_at', { ascending: false });
+
+        if (pdfError) throw pdfError;
+
         if (mounted) {
-          setPdfs(data);
+          setPdfs(data || []);
         }
       } catch (err) {
         console.error("Dashboard error:", err);
         if (mounted) {
           setError(err.message);
-          // If it's an auth error, redirect
           if (err.message?.includes("session") || err.message?.includes("auth")) {
             setIsAuthenticated(false);
             setTimeout(() => navigate("/login"), 100);
@@ -297,14 +300,22 @@ export default function Dashboard() {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
+  // ✅ Delete PDF directly from Supabase (NO backend server)
   const handleDelete = async (id) => {
     if (!window.confirm("Delete this PDF?")) return;
     setDeletingId(id);
     try {
-      await deletePDF(id);
+      const { error } = await supabase
+        .from('pdfs')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+
       setPdfs((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
-      alert("Failed to delete");
+      console.error("Delete error:", err);
+      alert("Failed to delete: " + err.message);
     } finally {
       setDeletingId(null);
     }
@@ -315,7 +326,6 @@ export default function Dashboard() {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      // Auth state change listener will handle the redirect
     } catch (err) {
       console.error("Logout error:", err);
       alert("Failed to logout. Please try again.");
@@ -341,6 +351,7 @@ export default function Dashboard() {
   };
 
   const rank = getRank();
+  const RankIcon = rank.icon;
 
   // Show loading while checking auth
   if (isAuthenticated === null || loading) {
@@ -395,7 +406,7 @@ export default function Dashboard() {
                   <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {user?.email?.split("@")[0] || "Learner"}! 👋</h1>
                   <p className="text-slate-400">You're on a <span className="text-orange-400 font-semibold">{streak}-day streak</span>. Keep it up!</p>
                   <div className="flex items-center gap-2 mt-4">
-                    <rank.icon className={`w-5 h-5 ${rank.color}`} />
+                    <RankIcon className={`w-5 h-5 ${rank.color}`} />
                     <span className={`text-sm font-medium ${rank.color}`}>{rank.label}</span>
                   </div>
                 </div>
@@ -448,7 +459,7 @@ export default function Dashboard() {
                 icon={FileText}
                 title="No PDFs Found"
                 description={search ? "Try a different search term" : "Upload your first PDF to get started"}
-                action={!search && (
+                action={!search ? (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -458,7 +469,7 @@ export default function Dashboard() {
                     <Upload className="w-4 h-4" />
                     Upload PDF
                   </motion.button>
-                )}
+                ) : null}
               />
             ) : (
               <div className="grid md:grid-cols-2 gap-4">
@@ -584,12 +595,13 @@ export default function Dashboard() {
         </button>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-              <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
-              <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
-              <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
-              <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
-               <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
-               <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
+          {/* Sidebar Navigation */}
+          <SidebarItem key="overview" icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
+          <SidebarItem key="pdfs" icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
+          <SidebarItem key="analytics" icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
+          <SidebarItem key="upload" icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
+          <SidebarItem key="notifications" icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
+          <SidebarItem key="settings" icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
         </nav>
 
         <div className="p-4 border-t border-slate-800/50">
