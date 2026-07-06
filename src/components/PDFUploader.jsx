@@ -30,6 +30,7 @@ import Flashcards from "./Flashcards";
 import supabase from "../services/supabase.js";
 import { uploadFile } from "../api/upload.js";
 import { askGroq, generateSummary, generateFlashcards, generateQuiz } from "../api/groq.js";
+import { sendEmail } from "../api/email.js";
 import * as pdfjsLib from "pdfjs-dist";
 
 // Set PDF.js worker
@@ -125,6 +126,7 @@ function UploadZone({ file, onFileSelect, onClear }) {
             </p>
           </div>
           <motion.button
+            type="button"
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
             onClick={onClear}
@@ -179,6 +181,7 @@ function AIActionCard({ icon: Icon, title, description, color, onClick, disabled
 
   return (
     <motion.button
+      type="button"
       whileHover={disabled ? {} : { y: -4, scale: 1.02 }}
       whileTap={disabled ? {} : { scale: 0.98 }}
       onClick={disabled ? undefined : onClick}
@@ -244,6 +247,7 @@ function OutputCard({ title, icon: Icon, color, children, onDownload, onCopy, is
         <div className="flex items-center gap-2">
           {onCopy && (
             <motion.button
+              type="button"
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleCopy}
@@ -254,6 +258,7 @@ function OutputCard({ title, icon: Icon, color, children, onDownload, onCopy, is
           )}
           {onDownload && (
             <motion.button
+              type="button"
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={onDownload}
@@ -309,7 +314,7 @@ function ChatMessage({ chat, index }) {
 }
 
 // ─── Main PDFUploader Component ──────────────────────────
-export default function PDFUploader() {
+export default function PDFUploader({ onUploadSuccess }) {
   const [file, setFile] = useState(null);
   const [uploadedUrl, setUploadedUrl] = useState(null);
   const [pdfText, setPdfText] = useState("");
@@ -317,12 +322,23 @@ export default function PDFUploader() {
   const [flashcards, setFlashcards] = useState("");
   const [quiz, setQuiz] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailLoading, setEmailLoading] = useState(false);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [chatHistory, setChatHistory] = useState([]);
   const [activeTab, setActiveTab] = useState("chat");
+  const [user, setUser] = useState(null);
 
   const isReady = !!uploadedUrl;
+
+  // GET CURRENT USER
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      setUser(session?.user || null);
+    };
+    getUser();
+  }, []);
 
   // ─── Extract REAL text from PDF using pdfjs-dist ─────
   const extractPdfText = async (pdfFile) => {
@@ -351,7 +367,10 @@ export default function PDFUploader() {
   };
 
   // ─── Upload ─────────────────────────────────────────────
-  const handleUpload = async () => {
+  const handleUpload = async (e) => {
+    e.preventDefault(); 
+    e.stopPropagation(); 
+
     if (!file) {
       toast.error("Select a PDF first");
       return;
@@ -359,13 +378,16 @@ export default function PDFUploader() {
 
     setLoading(true);
     try {
-      // Upload to Supabase Storage
       const result = await uploadFile(file, "pdfs");
       setUploadedUrl(result.url);
 
-      // Extract REAL text from PDF
       const text = await extractPdfText(file);
       setPdfText(text);
+
+      // CALL THE CALLBACK
+      if (onUploadSuccess) {
+        onUploadSuccess();
+      }
 
       toast.success("PDF Uploaded & Parsed Successfully!");
     } catch (error) {
@@ -488,9 +510,178 @@ export default function PDFUploader() {
   const downloadFlashcards = () => downloadContent(flashcards, "AI-Flashcards.txt");
   const downloadQuiz = () => downloadContent(quiz, "AI-Quiz.txt");
 
-  // ─── Email (Disabled - requires backend) ─────────────────
+  // EMAIL REPORT — SENDS ALL GENERATED CONTENT
   const handleSendEmail = async () => {
-    toast.info("Email feature requires backend server. Please use Download instead!");
+    if (!user?.email) {
+      toast.error("Please log in to send emails");
+      return;
+    }
+    if (!summary && !flashcards && !quiz) {
+      toast.error("Generate at least one item first");
+      return;
+    }
+
+    setEmailLoading(true);
+    try {
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { 
+              font-family: 'Inter', system-ui, -apple-system, sans-serif; 
+              background: #0f172a; 
+              padding: 24px; 
+              color: #e2e8f0;
+              line-height: 1.6;
+            }
+            .container { 
+              max-width: 640px; 
+              margin: 0 auto; 
+              background: #1e293b; 
+              border-radius: 20px; 
+              overflow: hidden;
+              border: 1px solid #334155;
+            }
+            .header { 
+              background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); 
+              padding: 32px 24px; 
+              text-align: center;
+            }
+            .header h1 { color: #fff; font-size: 24px; font-weight: 700; }
+            .header p { color: #c4b5fd; font-size: 14px; margin-top: 4px; }
+            .content { padding: 28px 24px; }
+            .section { 
+              margin-bottom: 24px; 
+              padding: 20px; 
+              background: #0f172a; 
+              border-radius: 16px;
+              border: 1px solid #334155;
+            }
+            .section:last-child { margin-bottom: 0; }
+            .section-title { 
+              font-size: 16px; 
+              font-weight: 700; 
+              margin-bottom: 12px;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .summary-title { color: #60a5fa; }
+            .flashcards-title { color: #a78bfa; }
+            .quiz-title { color: #fbbf24; }
+            .section-body { 
+              color: #cbd5e1; 
+              font-size: 14px; 
+              white-space: pre-wrap;
+              line-height: 1.7;
+            }
+            .meta { 
+              background: #0f172a; 
+              padding: 16px 24px; 
+              border-top: 1px solid #334155;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            .meta-text { color: #64748b; font-size: 12px; }
+            .footer { 
+              padding: 20px 24px; 
+              text-align: center; 
+              border-top: 1px solid #334155; 
+              color: #64748b; 
+              font-size: 12px;
+            }
+            .footer-brand { color: #a855f7; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+            .badge {
+              display: inline-block;
+              padding: 4px 12px;
+              border-radius: 9999px;
+              font-size: 11px;
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.05em;
+            }
+            .badge-summary { background: #1e3a8a; color: #60a5fa; }
+            .badge-flashcards { background: #4c1d95; color: #a78bfa; }
+            .badge-quiz { background: #78350f; color: #fbbf24; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>📚 StudyBuddy AI Report</h1>
+              <p>${file?.name || 'Your PDF Document'}</p>
+            </div>
+            
+            <div class="content">
+              ${summary ? `
+              <div class="section">
+                <div class="section-title summary-title">
+                  <span>📝</span> Summary <span class="badge badge-summary">Generated</span>
+                </div>
+                <div class="section-body">${summary.replace(/\n/g, '<br>')}</div>
+              </div>
+              ` : ''}
+              
+              ${flashcards ? `
+              <div class="section">
+                <div class="section-title flashcards-title">
+                  <span>🗂️</span> Flashcards <span class="badge badge-flashcards">Generated</span>
+                </div>
+                <div class="section-body">${flashcards.replace(/\n/g, '<br>')}</div>
+              </div>
+              ` : ''}
+              
+              ${quiz ? `
+              <div class="section">
+                <div class="section-title quiz-title">
+                  <span>❓</span> Quiz <span class="badge badge-quiz">Generated</span>
+                </div>
+                <div class="section-body">${quiz.replace(/\n/g, '<br>')}</div>
+              </div>
+              ` : ''}
+            </div>
+            
+            <div class="meta">
+              <span class="meta-text">Generated on ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+              <span class="meta-text">${[summary && 'Summary', flashcards && 'Flashcards', quiz && 'Quiz'].filter(Boolean).join(' • ')}</span>
+            </div>
+            
+            <div class="footer">
+              <p class="footer-brand">StudyBuddy</p>
+              <p>AI-Powered Study Assistant • studybuddy.app</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      await sendEmail({
+        to: user.email,
+        from: 'onboarding@resend.dev',
+        subject: `📚 StudyBuddy Report: ${file?.name || 'Your PDF Analysis'}`,
+        html,
+        text: `
+StudyBuddy AI Report
+Document: ${file?.name || 'Your PDF'}
+
+${summary ? '--- SUMMARY ---\n' + summary + '\n\n' : ''}${flashcards ? '--- FLASHCARDS ---\n' + flashcards + '\n\n' : ''}${quiz ? '--- QUIZ ---\n' + quiz + '\n\n' : ''}
+
+Generated on ${new Date().toLocaleString()}
+        `.trim(),
+      });
+
+      toast.success("📧 Report sent to your email!");
+    } catch (error) {
+      console.error("Email error:", error);
+      toast.error("Failed to send email: " + (error.message || "Unknown error"));
+    } finally {
+      setEmailLoading(false);
+    }
   };
 
   // ─── Clear File ─────────────────────────────────────────
@@ -533,7 +724,7 @@ export default function PDFUploader() {
         onClear={handleClearFile}
       />
 
-      {/* Upload Button */}
+      {/* Upload Button - FIXED: Wrapped in a div instead of form, button type="button" */}
       {file && !uploadedUrl && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -541,6 +732,7 @@ export default function PDFUploader() {
           className="flex justify-center"
         >
           <motion.button
+            type="button" // ⬅️ FIX: Explicitly set type="button" to prevent form submission
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={handleUpload}
@@ -612,8 +804,8 @@ export default function PDFUploader() {
           description="Send all generated content to your email"
           color="rose"
           onClick={handleSendEmail}
-          disabled={!isReady || loading || (!summary && !flashcards && !quiz)}
-          loading={loading}
+          disabled={!isReady || emailLoading || (!summary && !flashcards && !quiz)}
+          loading={emailLoading}
           isGenerated={false}
         />
       </motion.div>
@@ -669,6 +861,7 @@ export default function PDFUploader() {
                 />
               </div>
               <motion.button
+                type="button"
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
                 onClick={handleChat}
@@ -686,7 +879,7 @@ export default function PDFUploader() {
         </motion.div>
       )}
 
-      {/* Outputs - Fixed AnimatePresence */}
+      {/* Outputs */}
       <div className="space-y-6">
         {/* Summary */}
         <AnimatePresence>
@@ -718,7 +911,6 @@ export default function PDFUploader() {
               exit={{ opacity: 0, y: -20 }}
               className="relative bg-gradient-to-br from-violet-500/10 to-purple-500/10 border border-violet-500/20 rounded-3xl backdrop-blur-xl overflow-hidden"
             >
-              {/* Header */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-white/5">
@@ -728,6 +920,7 @@ export default function PDFUploader() {
                 </div>
                 <div className="flex items-center gap-2">
                   <motion.button
+                    type="button"
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={downloadFlashcards}
@@ -738,7 +931,6 @@ export default function PDFUploader() {
                   </motion.button>
                 </div>
               </div>
-              {/* Flashcards Component */}
               <div className="p-6">
                 <Flashcards flashcards={flashcards} />
               </div>

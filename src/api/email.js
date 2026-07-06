@@ -1,106 +1,127 @@
-const RESEND_FROM = 'StudyBuddy <onboarding@resend.dev>'
-const RESEND_URL = '/api/resend/emails'
+// src/api/email.js
+import { callResend } from './resend.js';
 
-export async function sendEmail({ to, subject, html, from = RESEND_FROM }) {
-  const response = await fetch(RESEND_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_RESEND_API_KEY}`,
-    },
-    body: JSON.stringify({ from, to, subject, html })
-  })
-  
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(`Email send failed: ${error}`)
-  }
-  
-  return response.json()
+/**
+ * Send a basic email
+ */
+export async function sendEmail({ to, from, subject, html, text }) {
+  return callResend('/emails', {
+    to: Array.isArray(to) ? to : [to],
+    from,
+    subject,
+    html,
+    text: text || '',
+  });
 }
 
-export async function sendWelcomeEmail(userEmail, userName) {
-  try {
-    const data = await sendEmail({
-      to: [userEmail],
-      subject: 'Welcome to StudyBuddy!',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-            <h1 style="margin: 0;">StudyBuddy</h1>
-            <p style="margin: 8px 0 0; opacity: 0.9;">Welcome aboard!</p>
+/**
+ * Send study streak reminder
+ */
+export async function sendStreakReminder({ to, userName, streakDays, lastStudyDate }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; padding: 24px; color: #e2e8f0; }
+        .container { max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 16px; overflow: hidden; border: 1px solid #334155; }
+        .header { background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%); padding: 32px 24px; text-align: center; }
+        .header h1 { color: #fff; font-size: 22px; font-weight: 700; }
+        .content { padding: 28px 24px; }
+        .streak-box { background: #0f172a; border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 20px; border: 1px solid #334155; }
+        .streak-number { font-size: 48px; font-weight: 800; color: #f97316; line-height: 1; }
+        .streak-label { color: #94a3b8; font-size: 14px; margin-top: 4px; }
+        .cta { text-align: center; margin-top: 24px; }
+        .cta-button { display: inline-block; background: #7c3aed; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 600; }
+        .footer { padding: 20px 24px; text-align: center; border-top: 1px solid #334155; color: #64748b; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header"><h1>🔥 StudyBuddy</h1></div>
+        <div class="content">
+          <p style="color: #94a3b8; margin-bottom: 16px;">Hi <strong style="color: #fff;">${userName}</strong>,</p>
+          <p style="color: #cbd5e1; margin-bottom: 20px;">Don't break your streak! You haven't studied since <strong>${lastStudyDate}</strong>.</p>
+          <div class="streak-box">
+            <div class="streak-number">${streakDays}</div>
+            <div class="streak-label">day streak 🔥</div>
           </div>
-          <div style="background: white; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0;">
-            <p style="color: #334155; font-size: 16px;">Hi ${userName || 'there'},</p>
-            <p style="color: #475569; font-size: 15px;">
-              Welcome to StudyBuddy! Start uploading PDFs to generate summaries, flashcards, and quizzes.
-            </p>
-            <p style="color: #64748b; font-size: 14px; margin-top: 20px;">
-              Sent at: ${new Date().toLocaleString()}
-            </p>
-          </div>
+          <div class="cta"><a href="#" class="cta-button">Continue Studying</a></div>
         </div>
-      `,
-    })
+        <div class="footer">
+          <p style="color: #a855f7; font-weight: 700; margin-bottom: 4px;">StudyBuddy</p>
+          <p>AI-Powered Study Assistant</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 
-    return { success: true, message: 'Welcome email sent!' }
-  } catch (error) {
-    console.error('Email error:', error)
-    return { success: false, message: error.message }
-  }
+  return sendEmail({
+    to,
+    from: 'chandurkarabhijit05@gmail.com', 
+    subject: `🔥 Don't lose your ${streakDays}-day streak!`,
+    html,
+  });
 }
 
-export async function sendPDFProcessedEmail(userEmail, fileName) {
-  try {
-    const data = await sendEmail({
-      to: [userEmail],
-      subject: `Your PDF "${fileName}" is ready!`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #7c3aed, #2563eb); color: white; padding: 24px; border-radius: 12px 12px 0 0;">
-            <h1 style="margin: 0;">StudyBuddy</h1>
-            <p style="margin: 8px 0 0; opacity: 0.9;">PDF Processing Complete</p>
+/**
+ * Send PDF processing complete notification
+ */
+export async function sendPDFReadyEmail({ to, userName, fileName, summaryUrl }) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background: #0f172a; padding: 24px; color: #e2e8f0; }
+        .container { max-width: 560px; margin: 0 auto; background: #1e293b; border-radius: 16px; overflow: hidden; border: 1px solid #334155; }
+        .header { background: linear-gradient(135deg, #059669 0%, #10b981 100%); padding: 32px 24px; text-align: center; }
+        .header h1 { color: #fff; font-size: 22px; font-weight: 700; }
+        .content { padding: 28px 24px; }
+        .success-badge { display: inline-flex; align-items: center; gap: 6px; background: #064e3b; color: #34d399; font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 9999px; margin-bottom: 16px; }
+        .file-box { background: #0f172a; border-radius: 12px; padding: 16px; margin: 16px 0; border: 1px solid #334155; }
+        .file-name { color: #fff; font-weight: 600; font-size: 15px; }
+        .cta { text-align: center; margin-top: 24px; }
+        .cta-button { display: inline-block; background: #059669; color: #fff; text-decoration: none; padding: 12px 28px; border-radius: 10px; font-weight: 600; }
+        .footer { padding: 20px 24px; text-align: center; border-top: 1px solid #334155; color: #64748b; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header"><h1>✅ StudyBuddy</h1></div>
+        <div class="content">
+          <div class="success-badge">● Processing Complete</div>
+          <p style="color: #94a3b8; margin-bottom: 16px;">Hi <strong style="color: #fff;">${userName}</strong>,</p>
+          <p style="color: #cbd5e1;">Your PDF has been analyzed! Here's what we found:</p>
+          <div class="file-box">
+            <div class="file-name">📄 ${fileName}</div>
           </div>
-          <div style="background: white; padding: 24px; border-radius: 0 0 12px 12px; border: 1px solid #e2e8f0;">
-            <p style="color: #334155; font-size: 16px;">Great news!</p>
-            <p style="color: #475569; font-size: 15px;">
-              Your PDF <strong>"${fileName}"</strong> has been processed. Your summary, flashcards, and quiz are now ready!
-            </p>
-            <p style="color: #64748b; font-size: 14px; margin-top: 20px;">
-              Sent at: ${new Date().toLocaleString()}
-            </p>
-          </div>
+          <p style="color: #94a3b8; font-size: 14px;">Summary, flashcards, and quiz are now ready.</p>
+          <div class="cta"><a href="${summaryUrl}" class="cta-button">View Results</a></div>
         </div>
-      `,
-    })
+        <div class="footer">
+          <p style="color: #10b981; font-weight: 700; margin-bottom: 4px;">StudyBuddy</p>
+          <p>AI-Powered Study Assistant</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
 
-    return { success: true, message: 'PDF notification sent!' }
-  } catch (error) {
-    console.error('Email error:', error)
-    return { success: false, message: error.message }
-  }
+  return sendEmail({
+    to,
+    from: 'chandurkarabhijit05@gmail.com', // ⚠️ REPLACE with your verified domain
+    subject: `✅ Your PDF "${fileName}" is ready!`,
+    html,
+  });
 }
 
-export async function sendStudyReminder(email, studyPlan) {
-  try {
-    const data = await sendEmail({
-      to: [email],
-      subject: '📚 StudyBuddy Daily Reminder',
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #8b5cf6;">Your Daily Study Plan</h2>
-          <p>Here's what you planned for today:</p>
-          <ul>
-            ${studyPlan.map(item => `<li>${item}</li>`).join('')}
-          </ul>
-          <p style="color: #666;">Keep up the great work! 🚀</p>
-        </div>
-      `,
-    })
-
-    return { success: true, message: 'Reminder sent!' }
-  } catch (error) {
-    console.error('Email error:', error)
-    return { success: false, message: error.message }
-  }
+/**
+ * Send weekly study summary
+ */
+export async function sendWeeklySummary({ to, userName, stats }) {
+  // Similar pattern...
 }
