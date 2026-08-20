@@ -9,7 +9,7 @@ import {
   Menu,
   X,
   BookOpen,
-  ChevronDown,
+  Settings,
 } from "lucide-react";
 
 // ─── Nav Link Component ────────────────────────────────────
@@ -46,7 +46,6 @@ function MobileMenu({ isOpen, onClose, navItems }) {
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -54,7 +53,6 @@ function MobileMenu({ isOpen, onClose, navItems }) {
             onClick={onClose}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden"
           />
-          {/* Menu Panel */}
           <motion.div
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
@@ -98,7 +96,6 @@ function MobileMenu({ isOpen, onClose, navItems }) {
                 ))}
               </div>
 
-              {/* Mobile CTA */}
               <div className="mt-8 pt-6 border-t border-slate-800/50">
                 <Link
                   to="/login"
@@ -134,7 +131,7 @@ export default function Navbar() {
   const navItems = [
     { to: "/", label: "Home", icon: Home },
     { to: "/dashboard", label: "Dashboard", icon: BookOpen },
-    { to: "/login", label: "Login", icon: LogIn },
+    { to: "/settings", label: "Settings", icon: Settings },
   ];
 
   return (
@@ -150,8 +147,7 @@ export default function Navbar() {
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-18 py-4">
-            {/* Logo */}
+          <div className="flex items-center justify-between h-[72px]">
             <Link to="/" className="flex items-center gap-3 group">
               <motion.div
                 whileHover={{ rotate: 10, scale: 1.1 }}
@@ -169,7 +165,6 @@ export default function Navbar() {
               </div>
             </Link>
 
-            {/* Desktop Navigation */}
             <div className="hidden lg:flex items-center gap-1">
               {navItems.map((item) => (
                 <NavLink
@@ -180,7 +175,6 @@ export default function Navbar() {
               ))}
             </div>
 
-            {/* Desktop CTA */}
             <div className="hidden lg:flex items-center gap-4">
               <Link
                 to="/login"
@@ -198,7 +192,6 @@ export default function Navbar() {
               </Link>
             </div>
 
-            {/* Mobile Menu Button */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -211,10 +204,8 @@ export default function Navbar() {
         </div>
       </motion.nav>
 
-      {/* Spacer for fixed navbar */}
-      <div className="h-20" />
+      <div className="h-[72px]" />
 
-      {/* Mobile Menu */}
       <MobileMenu
         isOpen={isMobileMenuOpen}
         onClose={() => setIsMobileMenuOpen(false)}

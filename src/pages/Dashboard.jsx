@@ -1,5 +1,6 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { deleteFile } from "../api/upload.js";
 import {
   LayoutDashboard,
   FileText,
@@ -33,17 +34,19 @@ import {
   BrainCircuit,
   HelpCircle,
   Loader2,
+  RefreshCw,
+  Mail,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import PDFUploader from "../components/PDFUploader";
-import { getDashboard, deletePDF } from "../services/api";
-import supabase from "../services/supabase";
 import Analytics from "../components/Analytics";
 import PDFPreview from "../components/PDFPreview";
 import StatsCard from "../components/StatsCard";
 import Notifications from "../components/Notifications";
 import QuickActions from "../components/QuickActions";
 import StudyStreak from "../components/StudyStreak";
+import supabase from "../services/supabase.js";
+import { sendEmail, sendPDFReadyEmail, sendStreakReminder } from "../api/email.js";
 
 // ─── Sidebar Item Component ──────────────────────────────
 function SidebarItem({ icon: Icon, label, active, onClick, badge, collapsed }) {
@@ -60,7 +63,6 @@ function SidebarItem({ icon: Icon, label, active, onClick, badge, collapsed }) {
     >
       <div className="relative flex-shrink-0">
         <Icon className={`w-5 h-5 ${active ? "text-violet-400" : "text-slate-500"}`} />
-        {/* Badge as a small dot when collapsed */}
         {collapsed && badge > 0 && (
           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full ring-2 ring-slate-900" />
         )}
@@ -191,23 +193,25 @@ function EmptyState({ icon: Icon, title, description, action }) {
 export default function Dashboard() {
   const [pdfs, setPdfs] = useState([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true); // Start true for initial load
+  const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") !== "light");
   const [user, setUser] = useState(null);
-  const [isAuthenticated, setIsAuthenticated] = useState(null); // null = checking, false = not auth, true = auth
+  const [isAuthenticated, setIsAuthenticated] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [activeSection, setActiveSection] = useState("overview");
   const [error, setError] = useState(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailStatus, setEmailStatus] = useState(null);
   const uploadRef = useRef(null);
   const navigate = useNavigate();
 
   // Stats
   const totalPDFs = pdfs.length;
   const totalSummaries = useMemo(() => pdfs.filter((p) => p.summary?.trim()).length, [pdfs]);
-  const totalFlashcards = useMemo(() => pdfs.filter((p) => String(p.flashcards).trim()).length, [pdfs]);
-  const totalQuizzes = useMemo(() => pdfs.filter((p) => String(p.quiz).trim()).length, [pdfs]);
+  const totalFlashcards = useMemo(() => pdfs.filter((p) => p.flashcards && String(p.flashcards).trim()).length, [pdfs]);
+  const totalQuizzes = useMemo(() => pdfs.filter((p) => p.quiz && String(p.quiz).trim()).length, [pdfs]);
 
   const streak = useMemo(() => {
     if (!pdfs.length) return 0;
@@ -226,7 +230,33 @@ export default function Dashboard() {
     return streak;
   }, [pdfs]);
 
-  const filteredPDFs = useMemo(() => pdfs.filter((p) => p.file_name?.toLowerCase().includes(search.toLowerCase())), [pdfs, search]);
+  // ─── FILTER PDFs ────────────────────────────────────────
+  const filteredPDFs = search.trim()
+    ? pdfs.filter((p) => p.file_name?.toLowerCase().includes(search.toLowerCase()))
+    : pdfs;
+
+  // ─── FETCH PDFs FROM SUPABASE ───────────────────────────
+  const fetchPDFs = useCallback(async (userId) => {
+    try {
+      setLoading(true);
+      const { data, error: pdfError } = await supabase
+        .from('pdfs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (pdfError) throw pdfError;
+
+      console.log("Fetched PDFs:", data?.length || 0, data);
+      setPdfs(data || []);
+      setError(null);
+    } catch (err) {
+      console.error("Fetch PDFs error:", err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   // Check auth and load data
   useEffect(() => {
@@ -234,14 +264,12 @@ export default function Dashboard() {
 
     const init = async () => {
       try {
-        // First check session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
         if (sessionError || !session?.user) {
           if (mounted) {
             setIsAuthenticated(false);
             setLoading(false);
-            // Redirect to login after a brief delay
             setTimeout(() => navigate("/login"), 100);
           }
           return;
@@ -252,29 +280,22 @@ export default function Dashboard() {
           setIsAuthenticated(true);
         }
 
-        // Then load dashboard data
-        const data = await getDashboard(session.user.id);
-        if (mounted) {
-          setPdfs(data);
-        }
+        await fetchPDFs(session.user.id);
+
       } catch (err) {
         console.error("Dashboard error:", err);
         if (mounted) {
           setError(err.message);
-          // If it's an auth error, redirect
           if (err.message?.includes("session") || err.message?.includes("auth")) {
             setIsAuthenticated(false);
             setTimeout(() => navigate("/login"), 100);
           }
         }
-      } finally {
-        if (mounted) setLoading(false);
       }
     };
 
     init();
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === "SIGNED_OUT") {
         setIsAuthenticated(false);
@@ -284,6 +305,7 @@ export default function Dashboard() {
       } else if (event === "SIGNED_IN" && session) {
         setIsAuthenticated(true);
         setUser(session.user);
+        fetchPDFs(session.user.id);
       }
     });
 
@@ -291,31 +313,113 @@ export default function Dashboard() {
       mounted = false;
       subscription?.unsubscribe();
     };
-  }, [navigate]);
+  }, [navigate, fetchPDFs]);
 
   useEffect(() => {
     localStorage.setItem("theme", darkMode ? "dark" : "light");
   }, [darkMode]);
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("Delete this PDF?")) return;
-    setDeletingId(id);
+  // ─── EMAIL FUNCTIONS ────────────────────────────────────
+  
+  // Send test email
+  const handleSendTestEmail = async () => {
+    if (!user?.email) return;
+    setEmailLoading(true);
+    setEmailStatus(null);
     try {
-      await deletePDF(id);
-      setPdfs((prev) => prev.filter((p) => p.id !== id));
+      await sendEmail({
+        to: user.email,
+        from: 'chandurkarabhijit05@gmail.com',
+        subject: '✅ StudyBuddy Email Test',
+        html: `<div style="font-family:Inter,sans-serif;padding:24px;background:#0f172a;color:#fff;border-radius:16px;">
+          <h2>🎉 Email Works!</h2>
+          <p>Hi ${user.email.split('@')[0]},</p>
+          <p>Your StudyBuddy email integration is working correctly.</p>
+          <p style="color:#94a3b8;font-size:12px;margin-top:24px;">Sent at ${new Date().toLocaleString()}</p>
+        </div>`,
+      });
+      setEmailStatus({ type: 'success', message: 'Test email sent!' });
+      setTimeout(() => setEmailStatus(null), 3000);
     } catch (err) {
-      alert("Failed to delete");
+      console.error('Email error:', err);
+      setEmailStatus({ type: 'error', message: err.message || 'Failed to send email' });
     } finally {
-      setDeletingId(null);
+      setEmailLoading(false);
     }
   };
 
+  // Send streak reminder email
+  const handleSendStreakEmail = async () => {
+    if (!user?.email || streak === 0) return;
+    setEmailLoading(true);
+    setEmailStatus(null);
+    try {
+      const lastDate = pdfs[0]?.created_at 
+        ? new Date(pdfs[0].created_at).toLocaleDateString() 
+        : 'recently';
+      await sendStreakReminder({
+        to: user.email,
+        userName: user.email.split('@')[0],
+        streakDays: streak,
+        lastStudyDate: lastDate,
+      });
+      setEmailStatus({ type: 'success', message: 'Streak reminder sent!' });
+      setTimeout(() => setEmailStatus(null), 3000);
+    } catch (err) {
+      console.error('Email error:', err);
+      setEmailStatus({ type: 'error', message: err.message || 'Failed to send email' });
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  // Send PDF ready notification (call this when PDF processing completes)
+  const notifyPDFReady = useCallback(async (pdf) => {
+    if (!user?.email || !pdf) return;
+    try {
+      await sendPDFReadyEmail({
+        to: user.email,
+        userName: user.email.split('@')[0],
+        fileName: pdf.file_name,
+        summaryUrl: `${window.location.origin}/pdfs/${pdf.id}`,
+      });
+      console.log('PDF ready email sent for:', pdf.file_name);
+    } catch (err) {
+      console.error('Failed to send PDF ready email:', err);
+    }
+  }, [user]);
+
+  // ─── DELETE PDF ─────────────────────────────────────────
+  const handleDelete = async (id, filePath) => {
+  if (!window.confirm("Delete this PDF?")) return;
+  setDeletingId(id);
+  try {
+    // Delete from database first
+    const { error: dbError } = await supabase
+      .from('pdfs')
+      .delete()
+      .eq('id', id);
+
+    if (dbError) throw dbError;
+
+    // Delete from storage if we have the path
+    if (filePath) {
+      await deleteFile(filePath);
+    }
+
+    setPdfs((prev) => prev.filter((p) => p.id !== id));
+  } catch (err) {
+    console.error("Delete error:", err);
+    alert("Failed to delete: " + err.message);
+  } finally {
+    setDeletingId(null);
+  }
+};
   const handleLogout = async () => {
     try {
       setLoading(true);
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      // Auth state change listener will handle the redirect
     } catch (err) {
       console.error("Logout error:", err);
       alert("Failed to logout. Please try again.");
@@ -341,6 +445,7 @@ export default function Dashboard() {
   };
 
   const rank = getRank();
+  const RankIcon = rank.icon;
 
   // Show loading while checking auth
   if (isAuthenticated === null || loading) {
@@ -355,7 +460,6 @@ export default function Dashboard() {
     );
   }
 
-  // If not authenticated, show nothing (will redirect)
   if (isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -384,6 +488,25 @@ export default function Dashboard() {
       case "overview":
         return (
           <div className="space-y-8">
+            {/* Email Status Toast */}
+            <AnimatePresence>
+              {emailStatus && (
+                <motion.div
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className={`p-4 rounded-xl flex items-center gap-3 ${
+                    emailStatus.type === 'success' 
+                      ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400' 
+                      : 'bg-rose-500/10 border border-rose-500/20 text-rose-400'
+                  }`}
+                >
+                  {emailStatus.type === 'success' ? <CheckCircle2 className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
+                  <span className="text-sm font-medium">{emailStatus.message}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -395,19 +518,31 @@ export default function Dashboard() {
                   <h1 className="text-3xl font-bold text-white mb-2">Welcome back, {user?.email?.split("@")[0] || "Learner"}! 👋</h1>
                   <p className="text-slate-400">You're on a <span className="text-orange-400 font-semibold">{streak}-day streak</span>. Keep it up!</p>
                   <div className="flex items-center gap-2 mt-4">
-                    <rank.icon className={`w-5 h-5 ${rank.color}`} />
+                    <RankIcon className={`w-5 h-5 ${rank.color}`} />
                     <span className={`text-sm font-medium ${rank.color}`}>{rank.label}</span>
                   </div>
                 </div>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={scrollToUpload}
-                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/20"
-                >
-                  <Upload className="w-5 h-5" />
-                  Upload PDF
-                </motion.button>
+                <div className="flex flex-col gap-3">
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={scrollToUpload}
+                    className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-violet-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/20"
+                  >
+                    <Upload className="w-5 h-5" />
+                    Upload PDF
+                  </motion.button>
+                  <motion.button
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    onClick={handleSendTestEmail}
+                    disabled={emailLoading}
+                    className="flex items-center gap-2 px-6 py-3 bg-slate-800/50 border border-slate-700/30 text-slate-300 font-medium rounded-xl hover:text-white hover:border-violet-500/40 transition-all disabled:opacity-50"
+                  >
+                    {emailLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Mail className="w-4 h-4" />}
+                    Test Email
+                  </motion.button>
+                </div>
               </div>
             </motion.div>
 
@@ -429,7 +564,20 @@ export default function Dashboard() {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-bold text-white">My PDFs</h2>
-              <span className="text-sm text-slate-500">{filteredPDFs.length} documents</span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => fetchPDFs(user?.id)}
+                  className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 border border-slate-700/30 rounded-xl text-sm text-slate-400 hover:text-white hover:border-slate-500/40 transition-all"
+                  title="Refresh PDFs"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  Refresh
+                </button>
+                <span className="text-sm text-slate-500">
+                  {filteredPDFs.length} document{filteredPDFs.length !== 1 ? "s" : ""}
+                  {search.trim() && ` (filtered from ${pdfs.length})`}
+                </span>
+              </div>
             </div>
 
             <div className="relative">
@@ -441,14 +589,22 @@ export default function Dashboard() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full bg-slate-800/50 border border-slate-700/30 rounded-xl pl-12 pr-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-violet-500/40"
               />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
 
             {filteredPDFs.length === 0 ? (
               <EmptyState
                 icon={FileText}
-                title="No PDFs Found"
-                description={search ? "Try a different search term" : "Upload your first PDF to get started"}
-                action={!search && (
+                title={search.trim() ? "No Matching PDFs" : "No PDFs Yet"}
+                description={search.trim() ? `No results for "${search}". Try a different search.` : "Upload your first PDF to get started with AI summaries, flashcards, and quizzes."}
+                action={!search.trim() ? (
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -458,19 +614,27 @@ export default function Dashboard() {
                     <Upload className="w-4 h-4" />
                     Upload PDF
                   </motion.button>
+                ) : (
+                  <button
+                    onClick={() => setSearch("")}
+                    className="flex items-center gap-2 px-6 py-3 bg-slate-800/50 border border-slate-700/30 text-slate-300 rounded-xl hover:text-white"
+                  >
+                    <RotateCcw className="w-4 h-4" />
+                    Clear Search
+                  </button>
                 )}
               />
             ) : (
               <div className="grid md:grid-cols-2 gap-4">
-                <AnimatePresence>
-                  {filteredPDFs.map((pdf) => (
-                    <PDFCard
-                      key={pdf.id}
-                      pdf={pdf}
-                      onPreview={setPreviewUrl}
-                      onDelete={handleDelete}
-                      deletingId={deletingId}
-                    />
+                <AnimatePresence mode="popLayout">
+                  {filteredPDFs.map((pdf, index) => (
+                  <PDFCard
+  key={pdf.id ?? `pdf-${index}`}
+  pdf={pdf}
+  onPreview={setPreviewUrl}
+  onDelete={(id) => handleDelete(id, pdf.file_path)}  // ⬅️ PASS file_path
+  deletingId={deletingId}
+/>
                   ))}
                 </AnimatePresence>
               </div>
@@ -487,6 +651,7 @@ export default function Dashboard() {
         );
 
       case "upload":
+      case "upload":
         return (
           <div className="space-y-6" ref={uploadRef}>
             <h2 className="text-2xl font-bold text-white">Upload & Analyze</h2>
@@ -498,6 +663,42 @@ export default function Dashboard() {
         return (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold text-white">Notifications</h2>
+            <div className="space-y-4">
+              <div className="bg-slate-800/40 border border-slate-700/30 rounded-2xl p-6">
+                <h3 className="text-lg font-semibold text-white mb-4">Email Notifications</h3>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleSendTestEmail}
+                    disabled={emailLoading}
+                    className="w-full flex items-center justify-between p-4 bg-slate-800/50 rounded-xl hover:bg-slate-700/50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Mail className="w-5 h-5 text-violet-400" />
+                      <div>
+                        <p className="text-sm font-medium text-white">Send Test Email</p>
+                        <p className="text-xs text-slate-500">Verify your email integration</p>
+                      </div>
+                    </div>
+                    {emailLoading ? <Loader2 className="w-5 h-5 animate-spin text-violet-400" /> : <ChevronRight className="w-5 h-5 text-slate-500" />}
+                  </button>
+                  
+                  <button
+                    onClick={handleSendStreakEmail}
+                    disabled={emailLoading || streak === 0}
+                    className="w-full flex items-center justify-between p-4 bg-slate-800/50 rounded-xl hover:bg-slate-700/50 transition-colors disabled:opacity-50"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Flame className="w-5 h-5 text-orange-400" />
+                      <div>
+                        <p className="text-sm font-medium text-white">Streak Reminder</p>
+                        <p className="text-xs text-slate-500">Send streak reminder to your email</p>
+                      </div>
+                    </div>
+                    {emailLoading ? <Loader2 className="w-5 h-5 animate-spin text-violet-400" /> : <ChevronRight className="w-5 h-5 text-slate-500" />}
+                  </button>
+                </div>
+              </div>
+            </div>
             <Notifications totalPDFs={totalPDFs} />
           </div>
         );
@@ -523,6 +724,23 @@ export default function Dashboard() {
                     animate={{ x: darkMode ? 20 : 2 }}
                     className="absolute top-1 w-5 h-5 bg-white rounded-full shadow-md"
                   />
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-800/50 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <Mail className="w-5 h-5 text-violet-400" />
+                  <div>
+                    <p className="text-sm font-medium text-white">Email Integration</p>
+                    <p className="text-xs text-slate-500">Resend API via Vite proxy</p>
+                  </div>
+                </div>
+                <button
+                  onClick={handleSendTestEmail}
+                  disabled={emailLoading}
+                  className="px-4 py-2 bg-violet-500/10 text-violet-400 rounded-lg text-sm font-medium hover:bg-violet-500/20 transition-colors disabled:opacity-50"
+                >
+                  {emailLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Test'}
                 </button>
               </div>
 
@@ -584,12 +802,12 @@ export default function Dashboard() {
         </button>
 
         <nav className="flex-1 px-3 py-4 space-y-1">
-              <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
-              <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
-              <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
-              <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
-               <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
-               <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
+          <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
+          <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
+          <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
+          <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
+          <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
+          <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
         </nav>
 
         <div className="p-4 border-t border-slate-800/50">
