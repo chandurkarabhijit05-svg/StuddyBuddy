@@ -12,7 +12,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
-  XCircle,          // Changed from X
+  XCircle,          
   Zap,
   BookOpen,
   Layers,

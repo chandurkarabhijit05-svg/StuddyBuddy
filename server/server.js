@@ -1,3 +1,4 @@
+process.env.PDFJS_DISABLE_WORKER = "true";
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -106,14 +107,26 @@ app.post("/api/summary", upload.single("pdf"), async (req, res) => {
       messages: [
         {
           role: "system",
-          content: "You are an expert study assistant. Create clear, concise, well-structured summaries of academic content. Use bullet points and headers where appropriate."
+          content: `You are a helpful study assistant. Summarize study material for a student.
+
+STRICT RULES:
+- Focus ONLY on the actual educational content, concepts, and ideas.
+- Do NOT include file metadata (file name, size, creation date, PDF version, page count, etc.).
+- Do NOT describe the document structure or layout (sections, pages, tables).
+- Do NOT use horizontal rules (---).
+- Do NOT use numbered sections like "1. File Metadata" or "2. Content Overview".
+- Start with a 1-2 sentence overview of the main topic.
+- Then list 4-8 key takeaways as bullet points.
+- Bold important terms using **term**.
+- Keep it concise, conversational, and focused on what a student needs to learn.
+- Use simple markdown: headings, bullet points, and bold text only.`
         },
         {
           role: "user",
-          content: `Summarize the following PDF content in a clear and structured way. Include key points, main ideas, and important details:\n\n${text}`
+          content: `Summarize the following content for studying:\n\n${text.slice(0, 12000)}`
         },
       ],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
     });
 
     const summary = completion.choices[0].message.content;
@@ -136,14 +149,27 @@ app.post("/api/flashcards", upload.single("pdf"), async (req, res) => {
       messages: [
         {
           role: "system",
-          content: "You are an expert study assistant. Create flashcards in a strict format. Each flashcard must follow this exact pattern:\n\nCard N:\nFront: [question or concept]\nBack: [answer or explanation]\n\nUse this exact format for every card. Number cards sequentially."
+          content: `You are an expert study assistant. Create flashcards from educational content.
+
+STRICT RULES:
+- Create 8-15 flashcards covering key concepts, definitions, and important details.
+- Use this EXACT format for every card:
+
+Card N:
+Front: [question or concept]
+Back: [clear answer or explanation]
+
+- Number cards sequentially (Card 1, Card 2, etc.).
+- Make questions specific and answers concise.
+- Do NOT include file metadata or document structure info.
+- Focus ONLY on the educational content.`
         },
         {
           role: "user",
-          content: `Create flashcards from the following PDF content. Cover all key concepts, definitions, and important details. Use the exact format specified:\n\n${text}`
+          content: `Create flashcards from the following content. Use the exact format specified:\n\n${text.slice(0, 12000)}`
         },
       ],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
     });
 
     const flashcards = completion.choices[0].message.content;
@@ -166,9 +192,12 @@ app.post("/api/quiz", upload.single("pdf"), async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `You are an expert quiz generator. Create multiple choice quizzes with exactly 4 options (A, B, C, D) per question. 
+          content: `You are an expert quiz generator. Create a multiple choice quiz from educational content.
 
-STRICT FORMAT - Follow this exact pattern for every question:
+STRICT RULES:
+- Create 5-10 questions.
+- Each question must have exactly 4 options labeled A, B, C, D.
+- Use this EXACT format for every question:
 
 Question N: [Question text]
 
@@ -179,18 +208,18 @@ D. [Option D]
 
 Correct Answer: [A/B/C/D]
 
-Explanation: [Brief explanation of why this is correct]
+Explanation: [Brief explanation]
 
----
-
-Repeat this format for each question. Always include the correct answer and explanation.`
+- Always include the correct answer and explanation.
+- Do NOT include file metadata or document structure info.
+- Focus ONLY on testing understanding of the educational content.`
         },
         {
           role: "user",
-          content: `Generate a quiz from the following PDF content. Create questions that test understanding of key concepts. Use the exact format specified above:\n\n${text}`
+          content: `Generate a quiz from the following content. Use the exact format specified:\n\n${text.slice(0, 12000)}`
         },
       ],
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
     });
 
     const quiz = completion.choices[0].message.content;
@@ -234,7 +263,7 @@ app.post("/api/chat", upload.single("pdf"), async (req, res) => {
     const { question, id } = req.body;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "openai/gpt-oss-120b",
       messages: [
         {
           role: "system",
