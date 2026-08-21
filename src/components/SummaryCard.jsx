@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   BookOpen,
   Copy,
@@ -22,94 +24,60 @@ import {
 
 // ─── Simple Markdown Renderer ────────────────────────────
 function MarkdownRenderer({ content }) {
-  const lines = content.split("\n");
-
   return (
-    <div className="space-y-3">
-      {lines.map((line, i) => {
-        // Heading
-        if (line.startsWith("# ")) {
-          return (
-            <h1 key={i} className="text-xl font-bold text-white mt-6 mb-3">
-              {line.replace("# ", "")}
-            </h1>
-          );
-        }
-        if (line.startsWith("## ")) {
-          return (
-            <h2 key={i} className="text-lg font-bold text-slate-200 mt-5 mb-2 flex items-center gap-2">
-              <div className="w-1 h-5 bg-violet-400 rounded-full" />
-              {line.replace("## ", "")}
-            </h2>
-          );
-        }
-        if (line.startsWith("### ")) {
-          return (
-            <h3 key={i} className="text-base font-semibold text-slate-300 mt-4 mb-2">
-              {line.replace("### ", "")}
-            </h3>
-          );
-        }
-
-        // Bullet points
-        if (line.startsWith("- ") || line.startsWith("* ")) {
-          return (
-            <div key={i} className="flex items-start gap-3 pl-2">
-              <div className="mt-2 w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
-              <p className="text-sm text-slate-300 leading-relaxed">
-                {line.replace(/^[-*]\s/, "")}
-              </p>
-            </div>
-          );
-        }
-
-        // Numbered list
-        if (line.match(/^\d+\.\s/)) {
-          const num = line.match(/^\d+/)[0];
-          return (
-            <div key={i} className="flex items-start gap-3 pl-2">
-              <span className="flex-shrink-0 w-5 h-5 rounded-lg bg-violet-500/20 text-violet-400 text-xs font-bold flex items-center justify-center mt-0.5">
-                {num}
-              </span>
-              <p className="text-sm text-slate-300 leading-relaxed">
-                {line.replace(/^\d+\.\s/, "")}
-              </p>
-            </div>
-          );
-        }
-
-        // Bold text
-        if (line.includes("**")) {
-          const parts = line.split(/(\*\*.*?\*\*)/g);
-          return (
-            <p key={i} className="text-sm text-slate-300 leading-relaxed">
-              {parts.map((part, j) => {
-                if (part.startsWith("**") && part.endsWith("**")) {
-                  return (
-                    <span key={j} className="font-bold text-violet-300">
-                      {part.replace(/\*\*/g, "")}
-                    </span>
-                  );
-                }
-                return <span key={j}>{part}</span>;
-              })}
-            </p>
-          );
-        }
-
-        // Empty line
-        if (!line.trim()) {
-          return <div key={i} className="h-2" />;
-        }
-
-        // Regular paragraph
-        return (
-          <p key={i} className="text-sm text-slate-400 leading-relaxed">
-            {line}
-          </p>
-        );
-      })}
-    </div>
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        h1: ({ children }) => (
+          <h1 className="text-xl font-bold text-white mt-6 mb-3">{children}</h1>
+        ),
+        h2: ({ children }) => (
+          <h2 className="text-lg font-bold text-slate-200 mt-5 mb-2 flex items-center gap-2">
+            <div className="w-1 h-5 bg-violet-400 rounded-full" />
+            {children}
+          </h2>
+        ),
+        h3: ({ children }) => (
+          <h3 className="text-base font-semibold text-slate-300 mt-4 mb-2">{children}</h3>
+        ),
+        p: ({ children }) => (
+          <p className="text-sm text-slate-300 leading-relaxed mb-3">{children}</p>
+        ),
+        ul: ({ children }) => (
+          <ul className="space-y-2 pl-2 mb-4">{children}</ul>
+        ),
+        ol: ({ children }) => (
+          <ol className="space-y-2 pl-2 mb-4">{children}</ol>
+        ),
+        li: ({ children }) => (
+          <li className="flex items-start gap-3 text-sm text-slate-300 leading-relaxed">
+            <div className="mt-2 w-1.5 h-1.5 rounded-full bg-violet-400 flex-shrink-0" />
+            <span>{children}</span>
+          </li>
+        ),
+        strong: ({ children }) => (
+          <strong className="font-bold text-violet-300">{children}</strong>
+        ),
+        em: ({ children }) => (
+          <em className="italic text-slate-200">{children}</em>
+        ),
+        hr: () => (
+          <div className="my-4 border-t border-slate-700/50" />
+        ),
+        blockquote: ({ children }) => (
+          <blockquote className="border-l-2 border-violet-400/50 pl-4 italic text-slate-400 my-4">
+            {children}
+          </blockquote>
+        ),
+        code: ({ children }) => (
+          <code className="px-1.5 py-0.5 bg-slate-800 rounded text-xs text-violet-300 font-mono">
+            {children}
+          </code>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
 
@@ -178,7 +146,11 @@ function KeyPoints({ content }) {
                   className="flex items-start gap-2 text-sm text-amber-100/80"
                 >
                   <Zap className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
-                  <span>{point.replace(/^[-*]\s*/, "")}</span>
+                  <span>
+                    {point
+                      .replace(/^[-*]\s*/, "")
+                      .replace(/\*\*/g, "")}
+                  </span>
                 </motion.li>
               ))}
             </ul>

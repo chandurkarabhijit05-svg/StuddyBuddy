@@ -848,7 +848,7 @@ export default function Dashboard() {
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center">
                   <User className="w-4 h-4 text-white" />
                 </div>
-                <span className="text-sm text-slate-300">{user?.email?.split("@")[0]}</span>
+                <span className="text-sm text-slate-300">{user?. l?.split("@")[0]}</span>
               </div>
             </div>
           </div>

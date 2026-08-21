@@ -12,7 +12,11 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+<<<<<<< HEAD:client/src/components/PDFUploader.jsx
+  XCircle,          
+=======
   XCircle,
+>>>>>>> f12b34408489c8faabbc2839904415f1fedd2e6e:src/components/PDFUploader.jsx
   Zap,
   BookOpen,
   Layers,
