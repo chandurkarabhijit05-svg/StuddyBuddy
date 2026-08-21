@@ -36,6 +36,7 @@ import {
   Loader2,
   RefreshCw,
   Mail,
+  Briefcase, // <-- Added Briefcase here
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import PDFUploader from "../components/PDFUploader";
@@ -191,6 +192,8 @@ function EmptyState({ icon: Icon, title, description, action }) {
 
 // ─── Main Dashboard Component ────────────────────────────
 export default function Dashboard() {
+  const navigate = useNavigate();
+  
   const [pdfs, setPdfs] = useState([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -205,7 +208,6 @@ export default function Dashboard() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailStatus, setEmailStatus] = useState(null);
   const uploadRef = useRef(null);
-  const navigate = useNavigate();
 
   // Stats
   const totalPDFs = pdfs.length;
@@ -320,8 +322,6 @@ export default function Dashboard() {
   }, [darkMode]);
 
   // ─── EMAIL FUNCTIONS ────────────────────────────────────
-  
-  // Send test email
   const handleSendTestEmail = async () => {
     if (!user?.email) return;
     setEmailLoading(true);
@@ -348,7 +348,6 @@ export default function Dashboard() {
     }
   };
 
-  // Send streak reminder email
   const handleSendStreakEmail = async () => {
     if (!user?.email || streak === 0) return;
     setEmailLoading(true);
@@ -373,7 +372,6 @@ export default function Dashboard() {
     }
   };
 
-  // Send PDF ready notification (call this when PDF processing completes)
   const notifyPDFReady = useCallback(async (pdf) => {
     if (!user?.email || !pdf) return;
     try {
@@ -391,30 +389,29 @@ export default function Dashboard() {
 
   // ─── DELETE PDF ─────────────────────────────────────────
   const handleDelete = async (id, filePath) => {
-  if (!window.confirm("Delete this PDF?")) return;
-  setDeletingId(id);
-  try {
-    // Delete from database first
-    const { error: dbError } = await supabase
-      .from('pdfs')
-      .delete()
-      .eq('id', id);
+    if (!window.confirm("Delete this PDF?")) return;
+    setDeletingId(id);
+    try {
+      const { error: dbError } = await supabase
+        .from('pdfs')
+        .delete()
+        .eq('id', id);
 
-    if (dbError) throw dbError;
+      if (dbError) throw dbError;
 
-    // Delete from storage if we have the path
-    if (filePath) {
-      await deleteFile(filePath);
+      if (filePath) {
+        await deleteFile(filePath);
+      }
+
+      setPdfs((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error("Delete error:", err);
+      alert("Failed to delete: " + err.message);
+    } finally {
+      setDeletingId(null);
     }
+  };
 
-    setPdfs((prev) => prev.filter((p) => p.id !== id));
-  } catch (err) {
-    console.error("Delete error:", err);
-    alert("Failed to delete: " + err.message);
-  } finally {
-    setDeletingId(null);
-  }
-};
   const handleLogout = async () => {
     try {
       setLoading(true);
@@ -447,7 +444,6 @@ export default function Dashboard() {
   const rank = getRank();
   const RankIcon = rank.icon;
 
-  // Show loading while checking auth
   if (isAuthenticated === null || loading) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -488,7 +484,6 @@ export default function Dashboard() {
       case "overview":
         return (
           <div className="space-y-8">
-            {/* Email Status Toast */}
             <AnimatePresence>
               {emailStatus && (
                 <motion.div
@@ -628,13 +623,13 @@ export default function Dashboard() {
               <div className="grid md:grid-cols-2 gap-4">
                 <AnimatePresence mode="popLayout">
                   {filteredPDFs.map((pdf, index) => (
-                  <PDFCard
-  key={pdf.id ?? `pdf-${index}`}
-  pdf={pdf}
-  onPreview={setPreviewUrl}
-  onDelete={(id) => handleDelete(id, pdf.file_path)}  // ⬅️ PASS file_path
-  deletingId={deletingId}
-/>
+                    <PDFCard
+                      key={pdf.id ?? `pdf-${index}`}
+                      pdf={pdf}
+                      onPreview={setPreviewUrl}
+                      onDelete={(id) => handleDelete(id, pdf.file_path)}
+                      deletingId={deletingId}
+                    />
                   ))}
                 </AnimatePresence>
               </div>
@@ -650,8 +645,7 @@ export default function Dashboard() {
           </div>
         );
 
-      case "upload":
-      case "upload":
+      case "upload": // Removed duplicate case
         return (
           <div className="space-y-6" ref={uploadRef}>
             <h2 className="text-2xl font-bold text-white">Upload & Analyze</h2>
@@ -805,6 +799,15 @@ export default function Dashboard() {
           <SidebarItem icon={LayoutDashboard} label="Overview" active={activeSection === "overview"} onClick={() => setActiveSection("overview")} collapsed={!sidebarOpen} />
           <SidebarItem icon={FileText} label="My PDFs" active={activeSection === "pdfs"} onClick={() => setActiveSection("pdfs")} badge={pdfs.filter((p) => !p.summary).length} collapsed={!sidebarOpen} />
           <SidebarItem icon={BarChart3} label="Analytics" active={activeSection === "analytics"} onClick={() => setActiveSection("analytics")} collapsed={!sidebarOpen} />
+          
+          {/* PLACEMENT GUIDE ITEM */}
+          <SidebarItem 
+            icon={Briefcase} 
+            label="Placement Guide" 
+            onClick={() => navigate('/placement-guide')} 
+            collapsed={!sidebarOpen} 
+          />
+
           <SidebarItem icon={Upload} label="Upload" active={activeSection === "upload"} onClick={() => setActiveSection("upload")} collapsed={!sidebarOpen} />
           <SidebarItem icon={Bell} label="Notifications" active={activeSection === "notifications"} onClick={() => setActiveSection("notifications")} badge={getBadge("notifications")} collapsed={!sidebarOpen} />
           <SidebarItem icon={Settings} label="Settings" active={activeSection === "settings"} onClick={() => setActiveSection("settings")} collapsed={!sidebarOpen} />
